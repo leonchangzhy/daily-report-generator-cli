@@ -1,0 +1,100 @@
+#!/usr/local/bin/python
+
+"""
+daily report generator
+"""
+
+from datetime import datetime, timezone, timedelta
+import os
+from dotenv import load_dotenv
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+
+
+load_dotenv()
+
+JST = timezone(timedelta(hours=9))
+UTC = timezone.utc
+CALENDAR_ID = os.getenv("CALENDAR_ID")
+
+
+def main():
+    """
+    main method for generate daily report
+    """
+    # Replace with your own values
+    time_range = time_range_for_today()
+    scopes = ['https://www.googleapis.com/auth/calendar']
+    cred = Credentials.from_service_account_file(
+        "credential.json").with_scopes(scopes)
+
+    # Use the 'google-api-python-client' library to make API calls
+    service = build('calendar', 'v3', credentials=cred)
+
+    # Use the 'events.list' method to fetch events from the specified date
+    response = service.events().list(
+        calendarId=CALENDAR_ID,
+        timeMin=time_range["start"],
+        timeMax=time_range["end"],
+        singleEvents=True,
+        orderBy='startTime').execute()
+
+    # Print the list of events that were returned
+    events = response['items']
+    tasks = task_input()
+    report_builder(tasks, events)
+
+
+def time_range_for_today():
+    """
+    get the time range of today
+    """
+    # Get the date and time at the beginning of today in JST
+    today = datetime.now(JST)
+    today_head = today.replace(
+        hour=0, minute=0, second=0, microsecond=0)
+    today_tail = today.replace(
+        hour=23, minute=59, second=59, microsecond=0)
+    # Convert the date and time to UTC
+
+    today_head_utc_iso = today_head.astimezone(
+        UTC).strftime('%Y-%m-%dT%H:%M:%SZ')
+    today_tail_utc_iso = today_tail.astimezone(
+        UTC).strftime('%Y-%m-%dT%H:%M:%SZ')
+    # This will return a dict contains the time range of today in iso8601
+    return {"start": today_head_utc_iso, "end": today_tail_utc_iso}
+
+
+def task_input():
+    """
+    Record tasks from stdin
+    """
+    has_task = True
+    tasks: list[str] = []
+    tasks.append(input("Please input your task: "))
+    while has_task:
+        next_task = input("Next task: ")
+        if next_task == "":
+            has_task = False
+        else:
+            tasks.append(next_task)
+    return tasks
+
+
+def report_builder(tasks: list, events: list):
+    """
+    Print the report in format
+    """
+    print("# Tasks")
+    for task in tasks:
+        print(f"  - {task}")
+    print("# Meetings")
+    for event in events:
+        start_time = event['start'].get('dateTime')
+        parsed_time = datetime.strptime(start_time, "%Y-%m-%dT%H:%M:%S%z")
+        print(f"  - {parsed_time.strftime('%H:%M')} {event.get('summary')}")
+
+
+if __name__ == '__main__':
+
+    main()
